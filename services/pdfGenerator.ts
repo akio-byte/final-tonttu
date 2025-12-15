@@ -48,6 +48,7 @@ const getBadgeDataUrl = (): Promise<string> => {
   
   return new Promise((resolve, reject) => {
     const img = new Image();
+    img.crossOrigin = "Anonymous";
     img.onload = () => {
         const canvas = document.createElement('canvas');
         canvas.width = 800; // High res for print
@@ -92,7 +93,10 @@ const createCircularImage = (base64Image: string): Promise<string> => {
 
       resolve(canvas.toDataURL('image/png'));
     };
-    img.onerror = reject;
+    img.onerror = (err) => {
+        console.error("Failed to load image for cropping", err);
+        reject(err);
+    };
     img.src = base64Image;
   });
 };
@@ -141,7 +145,6 @@ export const generateCertificatePDF = async (originalName: string, elfName: stri
   doc.triangle(width - 15, height - 15, width - 15 - cornerSize, height - 15, width - 15, height - 15 - cornerSize, 'F');
 
   // 4. Header
-  // Using standard fonts to ensure vector compatibility without external dependencies
   doc.setFont("times", "bold");
   doc.setTextColor(nordicRed);
   doc.setFontSize(40);
@@ -163,7 +166,6 @@ export const generateCertificatePDF = async (originalName: string, elfName: stri
   doc.line(width/2 + 40, 68, width/2 + 60, 68);
 
   // 6. Photo
-  // Circular Clip logic
   const photoSize = 80; // mm
   const photoX = (width - photoSize) / 2;
   const photoY = 85;
@@ -178,9 +180,11 @@ export const generateCertificatePDF = async (originalName: string, elfName: stri
   // Add user image
   try {
      const circularPhoto = await createCircularImage(elfPhotoBase64);
+     // Add processed image (circular)
      doc.addImage(circularPhoto, 'PNG', photoX, photoY, photoSize, photoSize);
   } catch (e) {
       console.error("Image processing failed, falling back to square", e);
+      // Fallback
       doc.addImage(elfPhotoBase64, 'JPEG', photoX, photoY, photoSize, photoSize);
   }
 
@@ -190,14 +194,18 @@ export const generateCertificatePDF = async (originalName: string, elfName: stri
   doc.circle(centerX, centerY, radius, 'S');
 
   // 7. Official Badge (Stamping)
-  // Overlap bottom-right of photo
-  const badgeDataUrl = await getBadgeDataUrl();
-  const badgeWidth = 35; 
-  const badgeHeight = 42; 
-  const badgeX = centerX + radius - 20;
-  const badgeY = centerY + radius - 20;
-  
-  doc.addImage(badgeDataUrl, 'PNG', badgeX, badgeY, badgeWidth, badgeHeight, undefined, 'FAST', 10); // 10 degree rotation
+  try {
+    const badgeDataUrl = await getBadgeDataUrl();
+    const badgeWidth = 35; 
+    const badgeHeight = 42; 
+    // Position: Overlapping bottom right of photo
+    const badgeX = centerX + radius - 20;
+    const badgeY = centerY + radius - 20;
+    
+    doc.addImage(badgeDataUrl, 'PNG', badgeX, badgeY, badgeWidth, badgeHeight, undefined, 'FAST', 10);
+  } catch (e) {
+    console.error("Badge generation failed", e);
+  }
 
   // 8. Text Content
   const textStartY = 190;

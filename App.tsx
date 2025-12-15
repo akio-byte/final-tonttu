@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect } from 'react';
 import { AppStep, UserState } from './types';
 import { generateElfName, generateElfPortrait } from './services/geminiService';
