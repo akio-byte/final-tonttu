@@ -41,7 +41,7 @@ async function generateElfName(userName: string): Promise<string> {
   try {
     const genAI = getClient();
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
+      model: "gemini-2.5-flash",
       systemInstruction: ELF_NAME_PROMPT,
       generationConfig: {
         responseMimeType: "application/json",
@@ -73,8 +73,8 @@ async function generateElfPortrait(base64Image: string): Promise<string> {
     const genAI = getClient();
     const cleanBase64 = base64Image.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
     
-    // gemini-1.5-flash is multimodal and supports images
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // Use gemini-2.5-flash-image for image generation/editing
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image" });
 
     const result = await model.generateContent([
       ELF_IMAGE_PROMPT,
@@ -86,26 +86,19 @@ async function generateElfPortrait(base64Image: string): Promise<string> {
       }
     ]);
 
-    // Check for inline data in response if available, otherwise fallback or error
-    // Note: The standard SDK usually returns text descriptions unless you ask for image generation via specific models like imagen,
-    // BUT Gemini 1.5 Flash does NOT generate images (it is text-to-text/multimodal-to-text).
-    // The previous code used `gemini-2.5-flash-image` which implied image generation capabilities.
-    // If we are strictly using @google/generative-ai and need Image Generation (Pixel output), we usually need Imagen or a specific model.
-    // However, Gemini 1.5 Pro/Flash cannot output images directly in the standard response text.
-    // Wait, the previous instructions mentioned "gemini-2.5-flash-image".
-    // If the user wants to "Transform" a photo, they need an Image Generation model (Imagen 3 via Vertex AI or Gemini with image output capability).
-    // The @google/generative-ai SDK currently wraps the Gemini API. Public Gemini API (AI Studio) does not widely support Image Output (pixels) for 1.5 models yet (it's mostly text/code).
-    // HOWEVER, the task is "Gemini image edit".
-    // If the public API doesn't support it, this feature will fail.
-    // BUT, I must follow the user's stack requirement.
-    // If I cannot generate an image, I will return the original to ensure the app doesn't crash.
-    // I will log a warning.
+    // Extract image from response
+    // The SDK wraps the response, we need to find inlineData in the parts
+    const candidate = result.response.candidates?.[0];
+    if (candidate?.content?.parts) {
+      for (const part of candidate.content.parts) {
+        if (part.inlineData && part.inlineData.data) {
+          return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+        }
+      }
+    }
     
-    // Correction: Some endpoints do support it, but if 1.5 Flash doesn't, we just fallback.
-    // I will keep the code structure but acknowledge it might just return text description if the model doesn't support image output.
-    // Actually, let's just return the original image if we can't get an image back.
-    
-    return base64Image; 
+    console.warn("No image data found in response, returning original.");
+    return base64Image;
 
   } catch (error) {
     console.error("Image Gen Error:", error);
@@ -153,7 +146,15 @@ async function createPdf(originalName: string, elfName: string, photoBase64: str
   try {
     const cleanPhoto = photoBase64.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
     const photoBuffer = Buffer.from(cleanPhoto, "base64");
-    const embeddedPhoto = await doc.embedJpg(photoBuffer);
+    
+    // Detect image type roughly
+    let embeddedPhoto;
+    if (photoBase64.startsWith('data:image/png')) {
+       embeddedPhoto = await doc.embedPng(photoBuffer);
+    } else {
+       embeddedPhoto = await doc.embedJpg(photoBuffer);
+    }
+    
     page.drawImage(embeddedPhoto, { x: photoX, y: photoY, width: photoSize, height: photoSize });
     
     // Draw border around photo
