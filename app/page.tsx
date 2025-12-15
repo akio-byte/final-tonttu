@@ -158,17 +158,17 @@ export default function Home() {
           <h2 className="text-4xl font-festive text-nordic-red">Valmista tuli!</h2>
           
           <div className="flex flex-col md:flex-row gap-8 items-center bg-[#FFFAF0] p-8 rounded-lg shadow-2xl text-nordic-dark">
-            <div className="relative w-64 h-64">
+            <div className="relative w-64 h-64 flex-shrink-0">
               <img 
                 src={result.imageUrl} 
                 alt="Tonttu" 
                 className="w-full h-full object-cover rounded-full border-8 border-nordic-gold"
               />
-              {/* UI Preview Badge (Visual only) */}
+              {/* Updated UI Preview Badge - No rotation, slightly larger */}
               <img 
-                src="/assets/osaamismerkki.png" 
-                alt="Badge" 
-                className="absolute -bottom-4 -right-4 w-24 h-auto transform rotate-12 drop-shadow-lg"
+                src="/assets/joulu-osaaja.png" 
+                alt="Joulu-osaaja" 
+                className="absolute -bottom-6 -right-6 w-32 h-auto drop-shadow-lg"
                 onError={(e) => e.currentTarget.style.display = 'none'}
               />
             </div>

@@ -168,21 +168,25 @@ async function createPdf(originalName: string, elfName: string, photoBase64: str
 
   // 5. BADGE - STATIC ASSET
   try {
-    const badgePath = path.join(process.cwd(), 'public', 'assets', 'osaamismerkki.png');
+    // Updated to use the new Joulu-osaaja badge
+    const badgePath = path.join(process.cwd(), 'public', 'assets', 'joulu-osaaja.png');
     if (fs.existsSync(badgePath)) {
       const badgeBytes = fs.readFileSync(badgePath);
       const badgeImage = await doc.embedPng(badgeBytes);
       
-      const badgeW = 100;
+      const badgeW = 110; // Slightly larger to make text readable
       const badgeH = badgeW * (badgeImage.height / badgeImage.width);
       
+      // Placed at bottom right of photo, no rotation to keep text straight
       page.drawImage(badgeImage, {
-        x: photoX + photoSize - 60,
-        y: photoY - 20,
+        x: photoX + photoSize - 80,
+        y: photoY - 30, // Lowered so feet hang off the frame
         width: badgeW,
         height: badgeH,
-        rotate: degrees(10)
+        rotate: degrees(0) 
       });
+    } else {
+        console.warn("Badge file not found at", badgePath);
     }
   } catch (e) {
     console.error("Badge embedding failed:", e);

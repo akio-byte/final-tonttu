@@ -27,10 +27,11 @@ const getBadgeData = (): Promise<BadgeData> => {
         });
     };
     img.onerror = () => {
-        console.error("Failed to load /badge.png. Please ensure the file exists.");
+        console.error("Failed to load badge image. Please ensure the file exists.");
         reject(new Error("Badge asset missing"));
     };
-    img.src = '/badge.png';
+    // Use the new asset path
+    img.src = '/assets/joulu-osaaja.png';
   });
 };
 
@@ -146,30 +147,26 @@ export const generateCertificatePDF = async (originalName: string, elfName: stri
   doc.circle(centerX, centerY, radius, 'S');
 
   // 7. Official Badge (Stamping)
-  // Placement: Partially over bottom-right.
   try {
     const badge = await getBadgeData();
-    const targetWidth = 35; // mm
-    // Calculate height based on native aspect ratio to strictly avoid distortion
+    const targetWidth = 40; // mm - increased size for legibility
+    // Calculate height based on native aspect ratio
     const ratio = badge.height / badge.width;
     const targetHeight = targetWidth * ratio;
     
     // Position: Overlapping bottom right.
-    // CenterX=105, CenterY=125, Radius=50.
-    // X: Move further right (less overlap inside).
-    const badgeX = centerX + radius - 15; 
+    const badgeX = centerX + radius - 20; 
     
-    // Y: Move further down.
+    // Y: Move down so feet hang off
     const badgeY = centerY + radius - 15; 
     
-    // IMPORTANT: Removing 'FAST' to ensure high quality rendering of the official badge
-    doc.addImage(badge.dataUrl, 'PNG', badgeX, badgeY, targetWidth, targetHeight, undefined, 'MEDIUM', 6); // 6 degree rotation
+    // No rotation for "Joulu-osaaja" text
+    doc.addImage(badge.dataUrl, 'PNG', badgeX, badgeY, targetWidth, targetHeight); 
   } catch (e) {
-    console.error("Badge generation failed. Is badge.png present in public folder?", e);
+    console.error("Badge generation failed.", e);
   }
 
   // 8. Text Content
-  // Pushed down to 220 (was 200) to ensure badge legs do not overlap text
   const textStartY = 220; 
   
   doc.setFont("times", "italic");
@@ -201,7 +198,7 @@ export const generateCertificatePDF = async (originalName: string, elfName: stri
   doc.text(elfName, width / 2, textStartY + 50, { align: 'center' });
 
   // 9. Footer Signatures
-  const footerY = 280; // Moved down slightly (was 270) to balance the page
+  const footerY = 280; 
   const sigOffset = 50;
 
   // Joulupukki
