@@ -1,0 +1,7 @@
+{
+  "name": "TonttuTekijä - Elf Generator",
+  "description": "A magical Finnish Christmas kiosk app that transforms users into Santa's helpers.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
