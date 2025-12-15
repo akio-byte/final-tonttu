@@ -48,10 +48,9 @@ const getBadgeDataUrl = (): Promise<string> => {
   
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = "Anonymous";
     img.onload = () => {
         const canvas = document.createElement('canvas');
-        canvas.width = 800; // High res for print
+        canvas.width = 800;
         canvas.height = 960;
         const ctx = canvas.getContext('2d');
         if(!ctx) return reject('No context');
@@ -64,7 +63,6 @@ const getBadgeDataUrl = (): Promise<string> => {
   });
 };
 
-// Helper to pre-process the user photo into a circle using Canvas
 const createCircularImage = (base64Image: string): Promise<string> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -79,30 +77,34 @@ const createCircularImage = (base64Image: string): Promise<string> => {
         reject(new Error("No canvas context"));
         return;
       }
-
-      // 1. Create circular path
       ctx.beginPath();
       ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
       ctx.closePath();
       ctx.clip();
-
-      // 2. Draw image (center crop)
       const xOffset = (img.width - size) / 2;
       const yOffset = (img.height - size) / 2;
       ctx.drawImage(img, xOffset, yOffset, size, size, 0, 0, size, size);
-
       resolve(canvas.toDataURL('image/png'));
     };
-    img.onerror = (err) => {
-        console.error("Failed to load image for cropping", err);
-        reject(err);
-    };
+    img.onerror = reject;
     img.src = base64Image;
   });
 };
 
+// Helper to draw snowflakes on PDF
+const drawSnowflakes = (doc: jsPDF, width: number, height: number) => {
+    doc.setTextColor(230, 240, 245); // Very light blue
+    const seed = 123; // Static seed feeling
+    for (let i = 0; i < 40; i++) {
+        const x = (Math.sin(i * seed) * width + width) % width;
+        const y = (Math.cos(i * seed) * height + height) % height;
+        const size = (i % 3) * 4 + 8; // Random sizes
+        doc.setFontSize(size);
+        doc.text("*", x, y);
+    }
+};
+
 export const generateCertificatePDF = async (originalName: string, elfName: string, elfPhotoBase64: string): Promise<Blob> => {
-  // A4 Portrait: 210mm x 297mm
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -112,7 +114,6 @@ export const generateCertificatePDF = async (originalName: string, elfName: stri
   const width = 210;
   const height = 297;
   
-  // Brand Colors
   const nordicRed = '#c0392b';
   const nordicGold = '#f1c40f';
   const nordicDark = '#1a2e35';
@@ -122,84 +123,75 @@ export const generateCertificatePDF = async (originalName: string, elfName: stri
   // 1. Background
   doc.setFillColor(bg);
   doc.rect(0, 0, width, height, 'F');
+  
+  // 2. Snowflakes Pattern
+  drawSnowflakes(doc, width, height);
 
-  // 2. Borders (15mm margin)
+  // 3. Borders (Double Line)
+  // Outer Red
   doc.setDrawColor(nordicRed);
   doc.setLineWidth(1.5); 
-  doc.rect(15, 15, width - 30, height - 30); 
-
+  doc.rect(12, 12, width - 24, height - 24); 
+  // Inner Dashed Gold
   doc.setDrawColor(nordicGold);
   doc.setLineWidth(0.5);
-  doc.rect(17, 17, width - 34, height - 34);
+  doc.setLineDashPattern([2, 2], 0);
+  doc.rect(15, 15, width - 30, height - 30);
+  doc.setLineDashPattern([], 0); // Reset dash
 
-  // 3. Corner Ornaments (Triangles)
+  // 4. Corner Ornaments (Simple geometric holly)
   doc.setFillColor(nordicRed);
-  const cornerSize = 10;
-  // Top Left
-  doc.triangle(15, 15, 15 + cornerSize, 15, 15, 15 + cornerSize, 'F');
-  // Top Right
-  doc.triangle(width - 15, 15, width - 15 - cornerSize, 15, width - 15, 15 + cornerSize, 'F');
-  // Bottom Left
-  doc.triangle(15, height - 15, 15 + cornerSize, height - 15, 15, height - 15 - cornerSize, 'F');
-  // Bottom Right
-  doc.triangle(width - 15, height - 15, width - 15 - cornerSize, height - 15, width - 15, height - 15 - cornerSize, 'F');
+  const c = 12; // Corner offset
+  doc.circle(c, c, 3, 'F');
+  doc.circle(width-c, c, 3, 'F');
+  doc.circle(c, height-c, 3, 'F');
+  doc.circle(width-c, height-c, 3, 'F');
 
-  // 4. Header
+  // 5. Header
+  doc.setFont("times", "bold");
+  doc.setTextColor(nordicDark);
+  doc.setFontSize(10);
+  doc.setCharSpace(2);
+  doc.text("VIRALLINEN", width / 2, 45, { align: 'center' });
+  
   doc.setFont("times", "bold");
   doc.setTextColor(nordicRed);
-  doc.setFontSize(40);
-  doc.text("Virallinen", width / 2, 45, { align: 'center' });
-  doc.text("Tonttutodistus", width / 2, 60, { align: 'center' });
-
-  // 5. Subheader
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(nordicBlue);
-  doc.setFontSize(10);
-  doc.setCharSpace(2); // Tracking
-  doc.text("KORVATUNTURIN TONTTUOSASTO", width / 2, 70, { align: 'center' });
-  doc.setCharSpace(0); // Reset
-  
-  // Decor lines
-  doc.setDrawColor(nordicGold);
-  doc.setLineWidth(0.5);
-  doc.line(width/2 - 60, 68, width/2 - 40, 68);
-  doc.line(width/2 + 40, 68, width/2 + 60, 68);
+  doc.setFontSize(48);
+  doc.setCharSpace(0);
+  doc.text("Tonttutodistus", width / 2, 62, { align: 'center' });
 
   // 6. Photo
-  const photoSize = 80; // mm
+  const photoSize = 90;
   const photoX = (width - photoSize) / 2;
-  const photoY = 85;
+  const photoY = 80;
   const centerX = width / 2;
   const centerY = photoY + (photoSize / 2);
   const radius = photoSize / 2;
 
-  // Background for photo (in case transparent)
+  // Background for photo
   doc.setFillColor(nordicDark);
   doc.circle(centerX, centerY, radius + 1, 'F');
   
-  // Add user image
   try {
      const circularPhoto = await createCircularImage(elfPhotoBase64);
-     // Add processed image (circular)
      doc.addImage(circularPhoto, 'PNG', photoX, photoY, photoSize, photoSize);
   } catch (e) {
-      console.error("Image processing failed, falling back to square", e);
-      // Fallback
       doc.addImage(elfPhotoBase64, 'JPEG', photoX, photoY, photoSize, photoSize);
   }
 
   // Photo Border
   doc.setDrawColor(nordicGold);
-  doc.setLineWidth(3);
+  doc.setLineWidth(2.5);
   doc.circle(centerX, centerY, radius, 'S');
 
-  // 7. Official Badge (Stamping)
+  // 7. Joulun Osaaja Badge (Prominently placed)
   try {
     const badgeDataUrl = await getBadgeDataUrl();
-    const badgeWidth = 35; 
-    const badgeHeight = 42; 
-    // Position: Overlapping bottom right of photo
-    const badgeX = centerX + radius - 20;
+    const badgeWidth = 45; // Larger
+    const badgeHeight = 54;
+    
+    // Bottom right of photo overlap
+    const badgeX = centerX + radius - 10;
     const badgeY = centerY + radius - 20;
     
     doc.addImage(badgeDataUrl, 'PNG', badgeX, badgeY, badgeWidth, badgeHeight, undefined, 'FAST', 10);
@@ -208,65 +200,63 @@ export const generateCertificatePDF = async (originalName: string, elfName: stri
   }
 
   // 8. Text Content
-  const textStartY = 190;
+  const textStartY = 205;
   
   doc.setFont("times", "italic");
   doc.setTextColor(nordicBlue);
-  doc.setFontSize(16);
+  doc.setFontSize(14);
   doc.text("Täten todistamme, että", width / 2, textStartY, { align: 'center' });
 
   doc.setFont("helvetica", "bold");
   doc.setTextColor(nordicDark);
-  doc.setFontSize(28);
-  
-  // Name with underline
+  doc.setFontSize(24);
   const nameUpper = originalName.toUpperCase();
-  doc.text(nameUpper, width / 2, textStartY + 15, { align: 'center' });
+  doc.text(nameUpper, width / 2, textStartY + 12, { align: 'center' });
+  
+  // Underline name
   const nameWidth = doc.getTextWidth(nameUpper);
-  doc.setDrawColor(nordicDark);
-  doc.setLineWidth(0.2);
-  doc.line((width - nameWidth)/2 - 5, textStartY + 17, (width + nameWidth)/2 + 5, textStartY + 17);
+  doc.setDrawColor(nordicGold);
+  doc.setLineWidth(0.5);
+  doc.line((width - nameWidth)/2 - 5, textStartY + 14, (width + nameWidth)/2 + 5, textStartY + 14);
 
   doc.setFont("times", "italic");
   doc.setTextColor(nordicBlue);
-  doc.setFontSize(16);
-  doc.text("tunnetaan Korvatunturilla tästä lähtien nimellä", width / 2, textStartY + 30, { align: 'center' });
+  doc.setFontSize(14);
+  doc.text("tunnetaan Korvatunturilla nimellä", width / 2, textStartY + 25, { align: 'center' });
 
   // Elf Name
   doc.setFont("times", "bolditalic");
   doc.setTextColor(nordicRed);
-  doc.setFontSize(40);
-  doc.text(elfName, width / 2, textStartY + 50, { align: 'center' });
+  doc.setFontSize(36);
+  doc.text(elfName, width / 2, textStartY + 42, { align: 'center' });
 
-  // 9. Footer Signatures
-  const footerY = 265;
+  // 9. Footer
+  const footerY = 270;
   const sigOffset = 50;
 
-  // Joulupukki
   doc.setFont("times", "italic");
   doc.setTextColor(nordicDark);
-  doc.setFontSize(24);
+  doc.setFontSize(20);
   doc.text("Joulupukki", width/2 - sigOffset, footerY, { align: 'center', angle: -5 });
   doc.setDrawColor(nordicBlue);
   doc.setLineWidth(0.2);
-  doc.line(width/2 - sigOffset - 20, footerY + 2, width/2 - sigOffset + 20, footerY + 2);
+  doc.line(width/2 - sigOffset - 15, footerY + 2, width/2 - sigOffset + 15, footerY + 2);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
   doc.setTextColor(nordicBlue);
-  doc.text("JOULUPUKKI", width/2 - sigOffset, footerY + 7, { align: 'center' });
+  doc.text("ALLEKIRJOITUS", width/2 - sigOffset, footerY + 7, { align: 'center' });
 
-  // Ylitonttu
   doc.setFont("times", "italic");
   doc.setTextColor(nordicDark);
-  doc.setFontSize(24);
+  doc.setFontSize(20);
   doc.text("Ylitonttu", width/2 + sigOffset, footerY, { align: 'center', angle: 3 });
   doc.setDrawColor(nordicBlue);
   doc.setLineWidth(0.2);
-  doc.line(width/2 + sigOffset - 20, footerY + 2, width/2 + sigOffset + 20, footerY + 2);
+  doc.line(width/2 + sigOffset - 15, footerY + 2, width/2 + sigOffset + 15, footerY + 2);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
   doc.setTextColor(nordicBlue);
-  doc.text("YLITONTTU", width/2 + sigOffset, footerY + 7, { align: 'center' });
+  doc.text("VAHVISTUS", width/2 + sigOffset, footerY + 7, { align: 'center' });
   
   return doc.output('blob');
 };
