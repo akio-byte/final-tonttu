@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
-import { PDFDocument, rgb, degrees } from "pdf-lib";
+import { GoogleGenAI, Type } from "@google/genai";
+import { PDFDocument, rgb, degrees, StandardFonts } from "pdf-lib";
 import fs from "node:fs";
 import path from "node:path";
 import { Buffer } from "node:buffer";
@@ -32,32 +32,41 @@ Instructions:
 
 // --- Helpers ---
 const getClient = () => {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is missing");
-  return new GoogleGenerativeAI(apiKey);
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) throw new Error("API_KEY is missing");
+  return new GoogleGenAI({ apiKey });
+};
+
+// Ensure "valmis" directory exists for finished certificates
+const ensureValmisDir = () => {
+  const dir = path.join(process.cwd(), 'public', 'valmis');
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
 };
 
 async function generateElfName(userName: string): Promise<string> {
   try {
-    const genAI = getClient();
-    const model = genAI.getGenerativeModel({ 
+    const ai = getClient();
+    const response = await ai.models.generateContent({ 
       model: "gemini-2.5-flash",
-      systemInstruction: ELF_NAME_PROMPT,
-      generationConfig: {
+      config: {
+        systemInstruction: ELF_NAME_PROMPT,
         responseMimeType: "application/json",
         responseSchema: {
-          type: SchemaType.OBJECT,
+          type: Type.OBJECT,
           properties: {
-            tonttunimi: { type: SchemaType.STRING },
+            tonttunimi: { type: Type.STRING },
           },
           required: ["tonttunimi"],
         },
         temperature: 0.8,
-      }
+      },
+      contents: JSON.stringify({ name: userName })
     });
 
-    const result = await model.generateContent(JSON.stringify({ name: userName }));
-    const text = result.response.text();
+    const text = response.text;
     
     if (!text) return "Talvitonttu";
     const json = JSON.parse(text);
@@ -70,27 +79,28 @@ async function generateElfName(userName: string): Promise<string> {
 
 async function generateElfPortrait(base64Image: string): Promise<string> {
   try {
-    const genAI = getClient();
+    const ai = getClient();
     const cleanBase64 = base64Image.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
     
     // Use gemini-2.5-flash-image for image generation/editing
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image" });
-
-    const result = await model.generateContent([
-      ELF_IMAGE_PROMPT,
-      {
-        inlineData: {
-          mimeType: "image/jpeg",
-          data: cleanBase64
-        }
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
+      contents: {
+        parts: [
+          { text: ELF_IMAGE_PROMPT },
+          {
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: cleanBase64
+            }
+          }
+        ]
       }
-    ]);
+    });
 
     // Extract image from response
-    // The SDK wraps the response, we need to find inlineData in the parts
-    const candidate = result.response.candidates?.[0];
-    if (candidate?.content?.parts) {
-      for (const part of candidate.content.parts) {
+    if (response.candidates?.[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
         if (part.inlineData && part.inlineData.data) {
           return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
         }
@@ -132,8 +142,8 @@ async function createPdf(originalName: string, elfName: string, photoBase64: str
   });
 
   // 3. Header Text
-  const font = await doc.embedFont(await doc.embedStandardFont('Times-Bold'));
-  const fontItalic = await doc.embedFont(await doc.embedStandardFont('Times-Italic'));
+  const font = await doc.embedFont(StandardFonts.TimesBold);
+  const fontItalic = await doc.embedFont(StandardFonts.TimesItalic);
   
   page.drawText("Virallinen", { x: width / 2 - 80, y: height - 120, size: 36, font, color: nordicRed });
   page.drawText("Tonttutodistus", { x: width / 2 - 120, y: height - 160, size: 36, font, color: nordicRed });
@@ -168,19 +178,17 @@ async function createPdf(originalName: string, elfName: string, photoBase64: str
 
   // 5. BADGE - STATIC ASSET
   try {
-    // Updated to use the new Joulu-osaaja badge
     const badgePath = path.join(process.cwd(), 'public', 'assets', 'joulu-osaaja.png');
     if (fs.existsSync(badgePath)) {
       const badgeBytes = fs.readFileSync(badgePath);
       const badgeImage = await doc.embedPng(badgeBytes);
       
-      const badgeW = 110; // Slightly larger to make text readable
+      const badgeW = 110; 
       const badgeH = badgeW * (badgeImage.height / badgeImage.width);
       
-      // Placed at bottom right of photo, no rotation to keep text straight
       page.drawImage(badgeImage, {
         x: photoX + photoSize - 80,
-        y: photoY - 30, // Lowered so feet hang off the frame
+        y: photoY - 30,
         width: badgeW,
         height: badgeH,
         rotate: degrees(0) 
@@ -228,6 +236,22 @@ export async function POST(req: NextRequest) {
     ]);
 
     const pdfBase64 = await createPdf(name, tonttunimi, elfImage);
+
+    // --- KIOSK FEATURE: Save to 'valmis' folder ---
+    try {
+        const valmisDir = ensureValmisDir();
+        const safeName = name.replace(/[^a-z0-9äöå]/gi, '_').toLowerCase();
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `tonttutodistus-${timestamp}-${safeName}.pdf`;
+        const filePath = path.join(valmisDir, filename);
+        
+        fs.writeFileSync(filePath, Buffer.from(pdfBase64, 'base64'));
+        console.log(`Saved certificate to: ${filePath}`);
+    } catch (saveError) {
+        console.error("Failed to save local copy:", saveError);
+        // We continue even if saving fails, to return the response to user
+    }
+    // ---------------------------------------------
 
     return NextResponse.json({
       tonttunimi,
