@@ -52,7 +52,7 @@ export const Certificate: React.FC<CertificateProps> = ({ originalName, elfName,
       </div>
 
       {/* Screen Preview (Interactive Representation Only) */}
-      <div className="bg-[#FFFAF0] text-nordic-dark w-full max-w-[400px] aspect-[210/297] shadow-2xl relative overflow-hidden flex flex-col items-center p-0 rounded-lg transform scale-95 origin-top">
+      <div className="bg-[#fdfbf7] text-nordic-dark w-full max-w-[400px] aspect-[210/297] shadow-2xl relative overflow-hidden flex flex-col items-center p-0 rounded-lg transform scale-95 origin-top">
         
         {/* Decorative Border */}
         <div className="absolute inset-4 border-[3px] border-nordic-red pointer-events-none z-20"></div>
@@ -69,22 +69,23 @@ export const Certificate: React.FC<CertificateProps> = ({ originalName, elfName,
           <h1 className="font-festive text-4xl text-nordic-red mb-1 leading-none tracking-wide">
             Virallinen<br/>Tonttutodistus
           </h1>
+          <p className="font-serif text-[10px] tracking-[0.2em] text-nordic-blue uppercase font-bold mt-2">
+            Korvatunturin Tonttuosasto
+          </p>
         </header>
 
         {/* Content */}
         <div className="flex-1 flex flex-col items-center justify-center w-full z-10 gap-4 -mt-4">
           <div className="relative">
-            {/* Larger Image (w-64 h-64 approx 256px / 100mm approx) */}
-            <div className="w-64 h-64 rounded-full border-[8px] border-nordic-gold overflow-hidden relative z-10 bg-nordic-dark">
+            <div className="w-48 h-48 rounded-full border-[8px] border-nordic-gold overflow-hidden relative z-10 bg-nordic-dark">
                 <img src={elfPhoto} alt="Tonttukuva" className="w-full h-full object-cover" />
             </div>
-            {/* Badge overlapping bottom-right. Adjusted slightly lower to match PDF logic and clear the face. */}
-            <div className="absolute -bottom-10 -right-6 z-40 w-24 h-28 transform rotate-6">
+            <div className="absolute -bottom-2 -right-6 z-40 w-24 h-28 transform rotate-6">
               <EduroBadge />
             </div>
           </div>
          
-          <div className="text-center space-y-3 max-w-[85%] px-4 pt-4">
+          <div className="text-center space-y-3 max-w-[80%] px-4">
             <div className="space-y-0.5">
               <p className="font-serif italic text-sm text-nordic-blue/70">Täten todistamme, että</p>
               <h2 className="font-sans font-bold text-xl text-nordic-dark uppercase tracking-wider border-b border-nordic-dark/10 pb-1">{originalName}</h2>

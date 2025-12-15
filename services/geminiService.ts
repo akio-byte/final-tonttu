@@ -1,73 +1,120 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ELF_NAME_PROMPT, ELF_IMAGE_PROMPT } from '../constants';
+import { ElfNameResponse } from '../types';
 
-// NOTE: This service might be used by client-side code (deprecated) or server components.
-// We strictly assume API key is available in process.env if run on server.
 const getClient = () => {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    // If we are on the client, this will fail, which is correct (security).
-    throw new Error("GEMINI_API_KEY is missing. Ensure you are running this on the server.");
+    throw new Error("API Key is missing. Please check your environment variables.");
   }
-  return new GoogleGenerativeAI(apiKey);
+  return new GoogleGenAI({ apiKey });
 };
 
 export const generateElfName = async (userName: string): Promise<string> => {
   try {
-    const genAI = getClient();
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-      systemInstruction: ELF_NAME_PROMPT,
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            tonttunimi: { type: SchemaType.STRING },
-          },
-          required: ["tonttunimi"],
+    const ai = getClient();
+    
+    // Define the schema for structured output
+    const schema: Schema = {
+      type: Type.OBJECT,
+      properties: {
+        tonttunimi: {
+          type: Type.STRING,
+          description: "The generated Finnish elf name",
         },
-        temperature: 0.7,
-      }
+      },
+      required: ["tonttunimi"],
+    };
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: JSON.stringify({ name: userName }),
+      config: {
+        systemInstruction: ELF_NAME_PROMPT,
+        responseMimeType: "application/json",
+        responseSchema: schema,
+        temperature: 0.7, // Creativity balance
+      },
     });
 
-    const result = await model.generateContent(JSON.stringify({ name: userName }));
-    const text = result.response.text();
+    const text = response.text;
+    if (!text) throw new Error("No text returned from Gemini");
 
-    if (!text) throw new Error("No text returned");
-    const json = JSON.parse(text);
+    const json: ElfNameResponse = JSON.parse(text);
     return json.tonttunimi;
   } catch (error) {
     console.error("Elf Name Generation Error:", error);
-    return "Tunturitonttu"; 
+    return "Tunturitonttu"; // Fallback
   }
 };
 
 export const generateElfPortrait = async (base64Image: string): Promise<string> => {
   try {
-    const genAI = getClient();
+    const ai = getClient();
+    
+    // Detect mime type or default to jpeg
+    const mimeTypeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+    const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
+    
+    // Clean base64 string
     const cleanBase64 = base64Image.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
+
+    // Switch to gemini-2.5-flash-image for better stability with image editing tasks
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
+      contents: {
+        parts: [
+          {
+            text: ELF_IMAGE_PROMPT,
+          },
+          {
+            inlineData: {
+              mimeType: mimeType,
+              data: cleanBase64,
+            },
+          },
+        ],
+      },
+      // Note: imageConfig is not supported for this model, and responseMimeType should not be set
+    });
+
+    const candidate = response.candidates?.[0];
     
-    // Fallback to text model if image model not configured
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent([
-        ELF_IMAGE_PROMPT,
-        { inlineData: { mimeType: "image/jpeg", data: cleanBase64 } }
-    ]);
+    if (!candidate) {
+        throw new Error("No candidates returned from Gemini.");
+    }
+
+    // Check for safety finish reasons
+    if (candidate.finishReason !== "STOP" && candidate.finishReason !== undefined) {
+        console.warn("Gemini finish reason:", candidate.finishReason);
+        // If filtered, we will throw to trigger the fallback
+        if (!candidate.content) {
+             throw new Error(`Generation filtered: ${candidate.finishReason}`);
+        }
+    }
+
+    const parts = candidate.content?.parts;
     
-    // Legacy SDK usually does not return image data this way, but keeping structure for compatibility
-    // if backend supports it.
-    const candidate = result.response.candidates?.[0];
-    if (candidate?.content?.parts) {
-      for (const part of candidate.content.parts) {
+    if (parts) {
+      // Find the image part
+      for (const part of parts) {
         if (part.inlineData && part.inlineData.data) {
-          return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+          return `data:image/jpeg;base64,${part.inlineData.data}`;
         }
       }
+      
+      const textPart = parts.find(p => p.text);
+      if (textPart && textPart.text) {
+          console.warn("Gemini returned text:", textPart.text);
+      }
     }
-    return base64Image;
+
+    throw new Error("No image data found in response.");
+
   } catch (error) {
     console.error("Elf Portrait Generation Error:", error);
+    // FALLBACK: If generation fails, return the original image so the user still gets a result
+    // We could add a client-side filter here if needed, but returning the original is safest.
     return base64Image;
   }
 };
