@@ -1,20 +1,27 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# TonttuTekijä - Elf Generator
 
-# Run and deploy your AI Studio app
+A Next.js kiosk app that transforms users into Finnish elves using Google Gemini AI.
 
-This contains everything you need to run your app locally.
+## Setup
 
-View your app in AI Studio: https://ai.studio/apps/drive/106YjMsHuA9Q8v2W02fU-iePgWvzQR5rP
+1.  Clone repository.
+2.  Install dependencies:
+    ```bash
+    npm install
+    ```
+3.  Set up environment variables:
+    - Copy `.env.example` to `.env`
+    - Add your `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/)
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
+```bash
+npm run dev
+```
 
+## Deploy to Vercel
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1.  Push code to GitHub.
+2.  Import project in Vercel.
+3.  Add the `GEMINI_API_KEY` in the Vercel **Settings > Environment Variables** section.
+4.  Deploy.

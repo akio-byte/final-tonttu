@@ -32,18 +32,24 @@ Instructions:
 
 // --- Helpers ---
 const getClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("API_KEY is missing");
-  return new GoogleGenAI({ apiKey });
+  // Guidelines: API key must be obtained from process.env.API_KEY
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 // Ensure "valmis" directory exists for finished certificates
 const ensureValmisDir = () => {
-  const dir = path.join(process.cwd(), 'public', 'valmis');
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  // In Vercel/Serverless, we can only write to /tmp usually, but for kiosk local use this is fine.
+  // We add a check to prevent crash on read-only systems.
+  try {
+    const dir = path.join(process.cwd(), 'public', 'valmis');
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    return dir;
+  } catch (e) {
+    console.warn("Could not create local archive directory (likely read-only filesystem):", e);
+    return null;
   }
-  return dir;
 };
 
 async function generateElfName(userName: string): Promise<string> {
@@ -82,18 +88,17 @@ async function generateElfPortrait(base64Image: string): Promise<string> {
     const ai = getClient();
     const cleanBase64 = base64Image.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
     
-    // Use gemini-2.5-flash-image for image generation/editing
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-image",
       contents: {
         parts: [
-          { text: ELF_IMAGE_PROMPT },
           {
             inlineData: {
               mimeType: "image/jpeg",
               data: cleanBase64
             }
-          }
+          },
+          { text: ELF_IMAGE_PROMPT }
         ]
       }
     });
@@ -142,8 +147,8 @@ async function createPdf(originalName: string, elfName: string, photoBase64: str
   });
 
   // 3. Header Text
-  const font = await doc.embedFont(StandardFonts.TimesBold);
-  const fontItalic = await doc.embedFont(StandardFonts.TimesItalic);
+  const font = await doc.embedFont(StandardFonts.TimesRomanBold);
+  const fontItalic = await doc.embedFont(StandardFonts.TimesRomanItalic);
   
   page.drawText("Virallinen", { x: width / 2 - 80, y: height - 120, size: 36, font, color: nordicRed });
   page.drawText("Tonttutodistus", { x: width / 2 - 120, y: height - 160, size: 36, font, color: nordicRed });
@@ -238,18 +243,19 @@ export async function POST(req: NextRequest) {
     const pdfBase64 = await createPdf(name, tonttunimi, elfImage);
 
     // --- KIOSK FEATURE: Save to 'valmis' folder ---
-    try {
-        const valmisDir = ensureValmisDir();
-        const safeName = name.replace(/[^a-z0-9äöå]/gi, '_').toLowerCase();
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const filename = `tonttutodistus-${timestamp}-${safeName}.pdf`;
-        const filePath = path.join(valmisDir, filename);
-        
-        fs.writeFileSync(filePath, Buffer.from(pdfBase64, 'base64'));
-        console.log(`Saved certificate to: ${filePath}`);
-    } catch (saveError) {
-        console.error("Failed to save local copy:", saveError);
-        // We continue even if saving fails, to return the response to user
+    const valmisDir = ensureValmisDir();
+    if (valmisDir) {
+        try {
+            const safeName = name.replace(/[^a-z0-9äöå]/gi, '_').toLowerCase();
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `tonttutodistus-${timestamp}-${safeName}.pdf`;
+            const filePath = path.join(valmisDir, filename);
+            
+            fs.writeFileSync(filePath, Buffer.from(pdfBase64, 'base64'));
+            console.log(`Saved certificate to: ${filePath}`);
+        } catch (saveError) {
+            console.error("Failed to save local copy:", saveError);
+        }
     }
     // ---------------------------------------------
 
